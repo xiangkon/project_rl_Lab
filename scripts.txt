@@ -1,0 +1,10 @@
+git clone https://github.com/xiangkon/phc_isaaclab.git
+
+cd phc_isaaclab
+python -m pip install -e source/phc_isaaclab
+
+python scripts/rsl_rl/train.py --task=Unitree-G1-29dof-Velocity-v0 --headless
+
+python scripts/rsl_rl/train.py --task=Unitree-G1-29dof-Velocity-gym-v0 --headless
+
+python scripts/rsl_rl/play.py --task=Unitree-G1-29dof-Velocity-gym-v0
