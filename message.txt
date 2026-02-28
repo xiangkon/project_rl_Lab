@@ -1,3 +1,12 @@
+(env_isaaclab) hdh@hdh-System-Product-Name:~/work/project_rl_Lab$ pip list | grep numpy
+numpy                        1.26.0
+numpy-quaternion             2023.0.3
+numpy-stl                    3.2.0
+
+
+
+
+
 cd IsaacLab
 
 ./isaaclab.sh -p scripts/tools/convert_urdf.py \
