@@ -4,7 +4,7 @@ import pickle
 import argparse
 import os
 
-def load_and_convert_motion_data(input_file, output_file, fps=60.0):
+def load_and_convert_motion_data(input_file, fps=60):
     """
     加载CSV格式的运动数据，转换为指定格式的字典并保存为pkl文件
     
@@ -13,6 +13,8 @@ def load_and_convert_motion_data(input_file, output_file, fps=60.0):
         output_file (str): 输出PKL文件路径
         fps (float): 帧率，默认60.0
     """
+
+    # print("帧率：", fps)
     # 1. 校验输入文件是否存在
     if not os.path.exists(input_file):
         raise FileNotFoundError(f"输入文件不存在: {input_file}")
@@ -65,6 +67,7 @@ def main():
     
     args = parser.parse_args()
     
+    # print(args.fps)
     # 执行数据转换
     try:
         load_and_convert_motion_data(args.input_file, args.fps)
