@@ -1,4 +1,15 @@
 # project_rl_Lab
+```bash
+# roboMotion
+pip install -e source/pose
+pip install -e source/motion_verify
+```
+
+```bash
+# env_isaaclab
+pip install -e source/phc_isaaclab
+pip install -e source/motion_verify
+```
 
 - Using a python interpreter that has Isaac Lab installed, install the library in editable mode using:
 
