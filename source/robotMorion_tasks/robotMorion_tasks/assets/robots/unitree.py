@@ -15,7 +15,7 @@ from isaaclab.actuators import IdealPDActuatorCfg, ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 from isaaclab.utils import configclass
 
-from phc_isaaclab.assets.robots import unitree_actuators
+from robotMorion_tasks.assets.robots import unitree_actuators
 
 UNITREE_MODEL_DIR = "unitree_model"  # Replace with the actual path to your unitree_model directory
 UNITREE_ROS_DIR = "path/to/unitree_ros"  # Replace with the actual path to your unitree_ros package

@@ -18,9 +18,10 @@ from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-from phc_isaaclab.assets.robots.unitree import UNITREE_G1_29DOF_CFG as ROBOT_CFG
-from phc_isaaclab.tasks.manager_based.phc_isaaclab.robot.g1 import mdp
+from robotMorion_tasks.assets.robots.unitree import UNITREE_G1_12DOF_CFG as ROBOT_CFG
+from robotMorion_tasks.tasks.manager_based.phc_isaaclab.robot.g1_gym import mdp
 
+# 地形生成配置
 COBBLESTONE_ROAD_CFG = terrain_gen.TerrainGeneratorCfg(
     size=(8.0, 8.0),
     border_width=20.0,
@@ -36,7 +37,7 @@ COBBLESTONE_ROAD_CFG = terrain_gen.TerrainGeneratorCfg(
     },
 )
 
-
+# 场景配置
 @configclass
 class RobotSceneCfg(InteractiveSceneCfg):
     """Configuration for the terrain scene with a legged robot."""
@@ -64,15 +65,6 @@ class RobotSceneCfg(InteractiveSceneCfg):
     # robots
     robot: ArticulationCfg = ROBOT_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
-    # sensors
-    height_scanner = RayCasterCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/torso_link",
-        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
-        ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),
-        debug_vis=False,
-        mesh_prim_paths=["/World/ground"],
-    )
     contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
     # lights
     sky_light = AssetBaseCfg(
@@ -84,44 +76,57 @@ class RobotSceneCfg(InteractiveSceneCfg):
     )
 
 
+# 这个类是机器人训练过程中 “随机化 / 扰动事件” 的总配置，核心目的是通过在不同阶段引入物理属性随机化、状态重置、外部扰动，
+# 提升训练出的机器人策略的鲁棒性和泛化能力（让机器人能适应不同物理条件、外部干扰）。
+# 对应 domain_rand
 @configclass
 class EventCfg:
     """Configuration for events."""
 
-    # startup
+    # Startup 阶段事件（环境初始化时执行，仅 1 次）
+    # 这类事件在整个训练环境首次启动时执行，用于对机器人的全局物理属性做随机化，避免模型过度拟合单一物理参数
+
+    # physics_material：随机化机器人摩擦属性
+    # 对应 randomize_friction
     physics_material = EventTerm(
         func=mdp.randomize_rigid_body_material,
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.3, 1.0),
-            "dynamic_friction_range": (0.3, 1.0),
-            "restitution_range": (0.0, 0.0),
-            "num_buckets": 64,
+            "static_friction_range": (0.1, 1.25), # 静摩擦系数随机范围 (0.1, 1.25)
+            "dynamic_friction_range": (0.1, 1.25), # 动摩擦系数随机范围 (0.1, 1.25)
+            "restitution_range": (0.0, 0.0), # 恢复系数（弹性）：固定0（无弹跳）
+            "num_buckets": 64, # 离散化桶数（将0.3~1.0分成64档，保证随机值可复现）
         },
     )
 
+    # add_base_mass：随机化机器人躯干质量
+    # 对应 randomize_base_mass
     add_base_mass = EventTerm(
         func=mdp.randomize_rigid_body_mass,
         mode="startup",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="torso_link"),
+            "asset_cfg": SceneEntityCfg("robot", body_names="pelvis"),
             "mass_distribution_params": (-1.0, 3.0),
             "operation": "add",
         },
     )
 
-    # reset
+    # Reset 阶段事件（每个 Episode 重置时执行）
+    # 这类事件在每一轮训练（Episode）结束、环境重置时执行，用于给机器人设置随机的初始状态，保证训练样本的多样性，避免模型过拟合固定初始位姿。
+    # base_external_force_torque：给躯干施加外力 / 力矩（占位）
     base_external_force_torque = EventTerm(
         func=mdp.apply_external_force_torque,
         mode="reset",
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names="torso_link"),
+            "asset_cfg": SceneEntityCfg("robot", body_names="pelvis"),
             "force_range": (0.0, 0.0),
             "torque_range": (-0.0, 0.0),
         },
     )
 
+    # reset_base：随机重置机器人基座位姿
+    # 对应 LeggedRobot -》_reset_root_states
     reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
         mode="reset",
@@ -138,6 +143,8 @@ class EventCfg:
         },
     )
 
+    # reset_robot_joints：重置机器人关节状态
+    # LeggedRobot -》_reset_dofs
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_scale,
         mode="reset",
@@ -147,15 +154,18 @@ class EventCfg:
         },
     )
 
-    # interval
+    # Interval 阶段事件（训练过程中定时触发）
+    # 这类事件在训练过程中按固定时间间隔触发，模拟外部扰动，考验机器人的抗干扰能力。
+    # 对应 push_robots
     push_robot = EventTerm(
         func=mdp.push_by_setting_velocity,
         mode="interval",
         interval_range_s=(5.0, 5.0),
-        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
+        params={"velocity_range": {"x": (-1.5, 1.5), "y": (-1.5, 1.5)}},
     )
 
 
+# 对应LeggedRobot._resample_commands
 @configclass
 class CommandsCfg:
     """Command specifications for the MDP."""
@@ -165,17 +175,18 @@ class CommandsCfg:
         resampling_time_range=(10.0, 10.0),
         rel_standing_envs=0.02,
         rel_heading_envs=1.0,
-        heading_command=False,
+        heading_command=True,
         debug_vis=True,
         ranges=mdp.UniformLevelVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.1, 0.1), lin_vel_y=(-0.1, 0.1), ang_vel_z=(-0.1, 0.1)
+            lin_vel_x=(-0.1, 0.1), lin_vel_y=(-0.1, 0.1), ang_vel_z=(-0.1, 0.1), heading=(-3.14, 3.14)
         ),
         limit_ranges=mdp.UniformLevelVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.5, 1.0), lin_vel_y=(-0.3, 0.3), ang_vel_z=(-0.2, 0.2)
+            lin_vel_x=(-0.5, 1.0), lin_vel_y=(-0.3, 0.3), ang_vel_z=(-0.2, 0.2), heading=(-3.14, 3.14)
         ),
     )
 
-
+# 动作控制类
+# 对应G1RoughCfg.control
 @configclass
 class ActionsCfg:
     """Action specifications for the MDP."""
@@ -184,7 +195,8 @@ class ActionsCfg:
         asset_name="robot", joint_names=[".*"], scale=0.25, use_default_offset=True
     )
 
-
+# 定义观察类
+# 对应 G1Robot.compute_observation/_get_noise_scale_vec，以及噪声模块的输入
 @configclass
 class ObservationsCfg:
     """Observation specifications for the MDP."""
@@ -194,16 +206,16 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, scale=0.2, noise=Unoise(n_min=-0.2, n_max=0.2)) # 3
-        projected_gravity = ObsTerm(func=mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05)) # 3
-        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"}) # 3
-        joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01)) # 29
-        joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel, scale=0.05, noise=Unoise(n_min=-1.5, n_max=1.5)) # 29
-        last_action = ObsTerm(func=mdp.last_action) # 29
-        # gait_phase = ObsTerm(func=mdp.gait_phase, params={"period": 0.8})
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, scale=0.2, noise=Unoise(n_min=-0.2, n_max=0.2))
+        projected_gravity = ObsTerm(func=mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05))
+        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
+        joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
+        joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel, scale=0.05, noise=Unoise(n_min=-1.5, n_max=1.5))
+        last_action = ObsTerm(func=mdp.last_action)
+        gait_phase = ObsTerm(func=mdp.gait_phase, params={"period": 0.8}) # TO DO 这一项的实现逻辑
 
         def __post_init__(self):
-            self.history_length = 5
+            self.history_length = 1
             self.enable_corruption = True
             self.concatenate_terms = True
 
@@ -221,33 +233,40 @@ class ObservationsCfg:
         joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel, scale=0.05)
         last_action = ObsTerm(func=mdp.last_action)
-        # gait_phase = ObsTerm(func=mdp.gait_phase, params={"period": 0.8})
+        gait_phase = ObsTerm(func=mdp.gait_phase, params={"period": 0.8})
         # height_scanner = ObsTerm(func=mdp.height_scan,
         #     params={"sensor_cfg": SceneEntityCfg("height_scanner")},
         #     clip=(-1.0, 5.0),
         # )
 
         def __post_init__(self):
-            self.history_length = 5
+            self.history_length = 1
 
     # privileged observations
     critic: CriticCfg = CriticCfg()
 
 
+# 奖励类
+# 对应 LeggedRobot.compute_reward
+# 对应 G1RoughCfg.control.scales
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
 
     # -- task
+    # 对应 LeggedRobot -》_reward_ang_vel_xy
     track_lin_vel_xy = RewTerm(
         func=mdp.track_lin_vel_xy_yaw_frame_exp,
         weight=1.0,
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
+
+    # 对应 LeggedRobot -》_reward_ang_vel_z
     track_ang_vel_z = RewTerm(
         func=mdp.track_ang_vel_z_exp, weight=0.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     )
 
+    # 对应
     alive = RewTerm(func=mdp.is_alive, weight=0.15)
 
     # -- base
@@ -255,36 +274,36 @@ class RewardsCfg:
     base_angular_velocity = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-0.001)
     joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.05)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-5.0)
     energy = RewTerm(func=mdp.energy, weight=-2e-5)
 
-    joint_deviation_arms = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.1,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                joint_names=[
-                    ".*_shoulder_.*_joint",
-                    ".*_elbow_joint",
-                    ".*_wrist_.*",
-                ],
-            )
-        },
-    )
-    joint_deviation_waists = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-1,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                joint_names=[
-                    "waist.*",
-                ],
-            )
-        },
-    )
+    # joint_deviation_arms = RewTerm(
+    #     func=mdp.joint_deviation_l1,
+    #     weight=-0.1,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg(
+    #             "robot",
+    #             joint_names=[
+    #                 ".*_shoulder_.*_joint",
+    #                 ".*_elbow_joint",
+    #                 ".*_wrist_.*",
+    #             ],
+    #         )
+    #     },
+    # )
+    # joint_deviation_waists = RewTerm(
+    #     func=mdp.joint_deviation_l1,
+    #     weight=-1,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg(
+    #             "robot",
+    #             joint_names=[
+    #                 "waist.*",
+    #             ],
+    #         )
+    #     },
+    # )
     joint_deviation_legs = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-1.0,
@@ -292,7 +311,7 @@ class RewardsCfg:
     )
 
     # -- robot
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-5.0)
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
     base_height = RewTerm(func=mdp.base_height_l2, weight=-10, params={"target_height": 0.78})
 
     # -- feet
@@ -336,7 +355,8 @@ class RewardsCfg:
         },
     )
 
-
+# 停止条件
+# 对应 LeggedRobot.check_termination
 @configclass
 class TerminationsCfg:
     """Termination terms for the MDP."""
@@ -345,8 +365,8 @@ class TerminationsCfg:
     base_height = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": 0.2})
     bad_orientation = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": 0.8})
 
-
-@configclass
+# 课程学习
+# 对应 LeggedRobot.update_curriculumcommand_
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
@@ -384,7 +404,7 @@ class RobotEnvCfg(ManagerBasedRLEnvCfg):
         # update sensor update periods
         # we tick all the sensors based on the smallest update period (physics update period)
         self.scene.contact_forces.update_period = self.sim.dt
-        self.scene.height_scanner.update_period = self.decimation * self.sim.dt
+        # self.scene.height_scanner.update_period = self.decimation * self.sim.dt
 
         # check if terrain levels curriculum is enabled - if so, enable curriculum for terrain generator
         # this generates terrains with increasing difficulty and is useful for training

@@ -23,8 +23,8 @@ INSTALL_REQUIRES = [
 
 # Installation operation
 setup(
-    name="phc_isaaclab",
-    packages=["phc_isaaclab"],
+    name="robotMorion_tasks",
+    packages=["robotMorion_tasks"],
     author=EXTENSION_TOML_DATA["package"]["author"],
     maintainer=EXTENSION_TOML_DATA["package"]["maintainer"],
     url=EXTENSION_TOML_DATA["package"]["repository"],

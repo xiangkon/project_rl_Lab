@@ -7,8 +7,14 @@ pip install -e source/motion_verify
 
 ```bash
 # env_isaaclab
-pip install -e source/phc_isaaclab
+pip install -e source/robotMorion_tasks
 pip install -e source/motion_verify
+```
+
+```bash
+# pipeline
+pip install -e source/gvhmr
+pip install -e source/GMR
 ```
 
 - Using a python interpreter that has Isaac Lab installed, install the library in editable mode using:
