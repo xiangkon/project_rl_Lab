@@ -158,7 +158,7 @@ if __name__ == "__main__":
     if args.save_path is not None:
         qpos = np.array(qpos_list)
         root_rot = qpos[:, 3:7].copy()
-        reorder_indices = [1, 2, 3, 0]
+        reorder_indices = [1, 2, 3, 0] # xwxyz -> xyzw
         root_rot = root_rot[:, reorder_indices]
         qpos[:, 3:7] = root_rot 
         # print(qpos.shape)

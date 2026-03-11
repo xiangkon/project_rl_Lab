@@ -27,7 +27,7 @@ simulation_app = app_launcher.app
 import gymnasium as gym
 from prettytable import PrettyTable
 
-import phc_isaaclab.tasks  # noqa: F401
+import robotMorion_tasks.tasks  # noqa: F401
 
 
 def main():
@@ -45,7 +45,7 @@ def main():
     # acquire all Isaac environments names
     for task_spec in gym.registry.values():
         # print(task_spec.id)
-        if "Template-" in task_spec.id or "Unitree-G1-29dof-Velocity" in task_spec.id:
+        if "Template-" in task_spec.id or "Unitree-G1-29dof" in task_spec.id:
             # add details to table
             table.add_row([index + 1, task_spec.id, task_spec.entry_point, task_spec.kwargs["env_cfg_entry_point"]])
             # increment count
