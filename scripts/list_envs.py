@@ -45,7 +45,7 @@ def main():
     # acquire all Isaac environments names
     for task_spec in gym.registry.values():
         # print(task_spec.id)
-        if "Template-" in task_spec.id or "Unitree-G1-29dof" in task_spec.id:
+        if "Atom01" in task_spec.id or "Unitree-G1-29dof" in task_spec.id:
             # add details to table
             table.add_row([index + 1, task_spec.id, task_spec.entry_point, task_spec.kwargs["env_cfg_entry_point"]])
             # increment count

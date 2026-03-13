@@ -12,3 +12,7 @@ from .tasks import *
 
 # Register UI extensions.
 from .ui_extension_example import *
+
+import os
+
+ROBOMOTION_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))

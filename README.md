@@ -91,3 +91,15 @@ python scripts/motion_recovery/gvhmr.py -s --video=asserts/video/kun.mp4
 conda activate gmr
 python scripts/motion_retarget/gmr_gvhmr.py --gvhmr_pred_file=outputs/pipeline/gvhmr/kun/hmr4d_results.pt --save_path=outputs/pipeline/gmr/kun.csv --record_video --video_path=outputs/pipeline/gmr/kun.mp4
 ```
+
+# AMP 训练
+```bash
+# 回退 isaaclab 版本  
+conda activate  env_isaaclab2
+pip install -e source/rsl_rl
+pip install -e source/robotMorion_tasks
+
+
+# 训练
+python scripts/rsl_rl/train_amp.py --task=Atom01-AMP  --headless
+````

@@ -79,6 +79,11 @@ class RobotSceneCfg(InteractiveSceneCfg):
 # MDP settings
 ##
 
+# 这段代码的核心是加载并配置参考运动指令，让机器人模仿 BVH 动作捕捉数据；
+# 通过 pose_range/velocity_range 等参数做随机化，避免过拟合，提升策略鲁棒性；
+# anchor_body_name 和 body_names 精准定义了跟踪的核心部位，确保运动模仿的有效性；
+# resampling_time_range 设为极大值，保证单 Episode 内跟踪完整的参考运动片段。
+
 
 @configclass
 class CommandsCfg:
@@ -121,6 +126,10 @@ class CommandsCfg:
     )
 
 
+# 这段配置定义了机器人的关节位置控制模式，是策略网络输出动作到机器人执行的核心桥梁；
+# scale 和 use_default_offset 是关键参数：前者适配关节物理范围，后者将绝对控制转为相对控制，降低学习难度；
+# joint_names=[".*"] 表明控制机器人全部 29 个关节，符合人形机器人全身体模仿学习的需求。
+
 @configclass
 class ActionsCfg:
     """Action specifications for the MDP."""
@@ -129,6 +138,11 @@ class ActionsCfg:
         asset_name="robot", joint_names=[".*"], scale=UNITREE_G1_29DOF_MIMIC_ACTION_SCALE, use_default_offset=True
     )
 
+
+# 该配置定义了两类观测空间：Policy（带噪声、局部感知）用于策略网络决策，Privileged（无噪声、全局信息）用于评论家网络评估；
+# PolicyCfg 通过 enable_corruption=True 添加噪声，模拟真实传感器误差，提升策略鲁棒性；
+# concatenate_terms=True 将多个观测项拼接成一维向量，适配神经网络的输入格式；
+# 核心设计逻辑：Policy 观测贴近真实机器人感知，Privileged 观测助力 Critic 高效学习，兼顾 “可迁移性” 和 “训练效率”。
 
 @configclass
 class ObservationsCfg:
@@ -169,6 +183,11 @@ class ObservationsCfg:
     policy: PolicyCfg = PolicyCfg()
     critic: PrivilegedCfg = PrivilegedCfg()
 
+
+# 该配置通过「启动时随机化」和「间隔干扰」两类事件，为仿真环境引入不确定性，提升策略的鲁棒性和迁移性；
+# startup 事件针对物理参数（摩擦、关节、质心），模拟真实机器人的固有差异；
+# interval 事件（推机器人）模拟外部干扰，训练抗干扰能力；
+# 所有事件的参数范围都经过精心设计（小幅偏移 / 干扰），既引入不确定性，又避免破坏训练稳定性。
 
 @configclass
 class EventCfg:
@@ -213,6 +232,12 @@ class EventCfg:
         interval_range_s=(1.0, 3.0),
         params={"velocity_range": VELOCITY_RANGE},
     )
+
+
+# 该奖励函数采用「核心跟踪奖励 + 安全正则化惩罚 + 姿态合理性约束」的组合设计，既引导机器人模仿参考运动，又保证运动安全、平滑；
+# 权重大小体现优先级：身体部位跟踪（1.0）> 躯干跟踪（0.5）> 关节极限惩罚（-10）> 动作稳定（-0.1）> 能耗 / 平滑（极小权重）；
+# 指数衰减函数（_exp）让奖励对小误差更宽容，提升训练稳定性；
+# 非预期接触惩罚通过正则表达式精准约束接触部位，保证运动姿态合理。
 
 
 @configclass
@@ -275,6 +300,10 @@ class RewardsCfg:
         },
     )
 
+# 该配置通过 4 个终止条件（超时、躯干高度、躯干朝向、末端执行器高度）构建了 Episode 的 “安全边界”，避免无效训练；
+# 所有终止条件为「或」关系，核心聚焦「高度 / 朝向」等失控关键指标，兼顾训练效率和合理性；
+# 阈值设计 “宽严相济”：允许小偏差，终止大失控，保证训练朝着 “稳定模仿参考运动” 的方向进行；
+# 超时终止保证 Episode 时长统一，是强化学习稳定训练的基础配置。
 
 @configclass
 class TerminationsCfg:
