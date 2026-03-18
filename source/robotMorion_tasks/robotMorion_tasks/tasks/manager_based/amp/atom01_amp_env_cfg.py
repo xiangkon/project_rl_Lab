@@ -47,7 +47,7 @@ import isaaclab.terrains as terrain_gen
 from robotMorion_tasks.assets.robots.roboparty import ATOM01_CFG
 # from robotMorion_tasks import ROBOMOTION_ROOT_DIR
 
-ROBOPARTY_DATA_DIR = "asserts/motions/RoboParty"
+ROBOPARTY_DATA_DIR = "assets/motions/RoboParty"
 
 KEY_BODY_NAMES = [
     "left_ankle_roll_link", 
@@ -59,6 +59,11 @@ KEY_BODY_NAMES = [
 ]
 ANIMATION_TERM_NAME = "animation"
 AMP_NUM_STEPS = 3
+
+
+# 该类是 ATOM01 机器人 AMP 任务的奖励体系配置，覆盖速度跟踪、存活、基座姿态、关节运动、足部行为、非期望接触六大维度；
+# 核心特点：大部分奖励项默认禁用（weight=0），仅 undesired_contacts 启用惩罚（-1），方便根据任务需求灵活调整权重；
+# 关键逻辑：通过 RewTerm 绑定评价函数和参数，SceneEntityCfg 精准指定监控的机器人部件 / 传感器，实现对机器人行为的精细化约束。
 
 @configclass
 class Atom01AmpRewards():
@@ -126,6 +131,9 @@ class Atom01AmpRewards():
         },
     )
 
+# 该类是 ATOM01 机器人 AMP 任务的完整环境配置，覆盖场景、运动数据、奖励、指令、终止条件等所有核心维度；
+# 核心参数特点：启用 2048 个并行环境提升训练效率，整合多源运动数据支持多样化动作模仿，通过正负奖励权重约束机器人行为（鼓励平稳、低能耗、合规运动）；
+# 关键优化：disable_zero_weight_rewards() 自动禁用无效奖励项，num_steps_to_use=3 平衡动画跟踪的短期精度和长期稳定性。
 
 @configclass
 class Atom01AmpEnvCfg(AmpEnvCfg):
@@ -253,7 +261,11 @@ class Atom01AmpEnvCfg(AmpEnvCfg):
         if self.__class__.__name__ == "Atom01AmpEnvCfg":
             self.disable_zero_weight_rewards()
             
-            
+
+# 该类是训练配置的演示专用子类，核心是 “简化 + 固定 + 去干扰”：减少环境数量、固定速度指令、禁用噪声和外部干扰，适配可视化验证场景；
+# 继承父类所有核心配置（奖励规则、运动数据、机器人模型等），仅修改演示所需的参数，保证逻辑一致性；
+# 关键优化：通过固定指令和禁用干扰，让机器人的运动行为可预测，便于观察基础运动能力（如平稳性、防滑性）。
+
 @configclass
 class Atom01AmpEnvCfg_PLAY(Atom01AmpEnvCfg):
     def __post_init__(self):

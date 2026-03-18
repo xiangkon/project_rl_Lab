@@ -60,6 +60,10 @@ from robotMorion_tasks.tasks.manager_based.amp.managers import AnimationTermCfg 
 from robotMorion_tasks.tasks.manager_based.amp.managers import MotionDataTermCfg as MotionDataTerm
 ANIMATION_TERM_NAME = "animation"
 
+# 该类是 AMP 任务的场景基础配置，定义了地面（物理 + 视觉）、机器人占位符、接触力传感器、天空灯光四大核心元素；
+# 关键设计：robot = MISSING 强制子类指定具体机器人模型，保证配置的通用性；接触力传感器启用历史记录和空中时间跟踪，为运动任务提供核心数据；
+# 核心参数：地面高摩擦配置（static_friction=1.0）适合腿式机器人运动，避免打滑；传感器覆盖全机器人连杆，满足接触检测需求。
+
 @configclass
 class AmpSceneCfg(InteractiveSceneCfg):
     """Configuration for the terrain scene with a legged robot."""
@@ -104,6 +108,9 @@ class AmpSceneCfg(InteractiveSceneCfg):
 # MDP settings
 ##
 
+# 该配置类定义了机器人基座速度指令的生成规则，核心是低速、小幅、全朝向的随机指令，适配初始训练阶段；
+# 关键参数：10 秒固定重采样周期、2% 站立指令比例、启用朝向控制（刚度 0.5）、全方向朝向范围；
+# 设计逻辑：通过小范围随机指令先训练机器人的平稳性和基础运动能力，后续可通过扩大 ranges 中的数值（如 lin_vel_x 改为 (-1.0, 2.0)）提升运动难度。
 
 @configclass
 class CommandsCfg:
@@ -122,6 +129,9 @@ class CommandsCfg:
         ),
     )
 
+# 该配置类定义了机器人的动作类型为关节位置控制，动作作用于所有关节，且通过小缩放因子（0.25）限制调整幅度；
+# 核心设计：启用默认偏移让智能体学习 “相对调整”，降低学习难度，适配初始训练阶段；
+# 关键参数：scale=0.25 是核心，决定关节动作的最大调整幅度，小值保证训练初期的稳定性。
 
 @configclass
 class ActionsCfg:
@@ -129,6 +139,9 @@ class ActionsCfg:
 
     joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.25, use_default_offset=True)
 
+# 该配置为 AMP 任务的四大核心模块分别定制观测规则：Policy（带噪声、单步）、Critic（无噪声、3 步）、Discriminator（无噪声、10 步、时序）、DiscriminatorDemo（参考动画、时序）；
+# 关键差异：Policy 加噪声模拟真实感知，Critic 用特权观测精准评估，Discriminator 用长时序区分运动序列；
+# 核心目的：通过差异化的观测配置，让每个模块发挥最优作用，最终实现机器人对参考动画的精准模仿。
 
 @configclass
 class ObservationsCfg():
@@ -255,7 +268,9 @@ class ObservationsCfg():
     
     disc_demo: DiscriminatorDemoCfg = DiscriminatorDemoCfg()
         
-
+# 该配置类通过 startup/reset/interval 三种触发模式，为机器人引入物理属性随机化、初始状态随机化、动态外部干扰三大类事件；
+# 核心目的：提升策略的鲁棒性和泛化能力，让训练出的机器人能适应不同硬件参数、初始状态和外部干扰；
+# 关键设计：随机范围控制在合理区间（如 80%~120% 缩放），避免过度随机导致训练不稳定，同时保留核心干扰场景（如推机器人）。
 
 @configclass
 class EventCfg:
@@ -368,7 +383,11 @@ class EventCfg:
         interval_range_s=(5.0, 10.0),
         params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-1.0, 1.0)}},
     )
-    
+
+# 该配置类构建了 “核心奖励 + 分层惩罚” 的奖励体系，核心目标是让机器人精准跟踪速度指令、平稳无跳动、仅用足部接触地面；
+# 关键设计：通过指数奖励保证速度跟踪的精准性，通过高权重惩罚约束上下跳动，通过低权重惩罚兼顾能耗和平滑性；
+# 灵活性：可选惩罚项当前禁用，可根据任务需求（如强制水平、关节保护）调整权重启用。
+
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
@@ -405,6 +424,10 @@ class RewardsCfg:
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
 
 
+# 该配置类定义了机器人仿真的四类核心终止条件：超时、非法接触、基座过低、姿态失控，覆盖了训练中所有常见的无效状态；
+# 关键设计：通过 “快速检测（高度 / 姿态）+ 精准检测（接触）+ 兜底（超时）” 的分层逻辑，保证终止条件的及时性和准确性；
+# 核心价值：避免无效训练数据，提升训练效率，同时约束机器人的运动安全边界（如姿态、高度）。
+
 @configclass
 class TerminationsCfg:
     """Termination terms for the MDP."""
@@ -435,7 +458,11 @@ class MotionDataCfg:
         motion_data_dir="", 
         motion_data_weights={},
     )
-    
+
+# 该配置类是 AMP 算法读取参考动画数据的核心入口，定义了动画数据的提取维度、使用长度和采样规则；
+# 关键参数：num_steps_to_use=10 保证时序长度匹配判别器，random_initialize/random_fetch 提升样本多样性，motion_data_components 覆盖全维度运动数据；
+# 核心作用：为判别器提供多样化的参考动画序列，让机器人学习模仿自然、真实的运动模式。
+
 @configclass
 class AnimationCfg:
     """Animation settings for the MDP."""
@@ -461,6 +488,10 @@ class AnimationCfg:
 # Environment configuration
 ##
 
+# AmpEnvCfg 是 AMP 运动任务的总配置入口，整合了场景、观测、动作、奖励等所有子模块，定义了训练所需的完整环境规则；
+# __post_init__ 核心作用：配置仿真步长、降采样、GPU 资源、传感器周期，适配大规模并行训练的性能与精度需求；
+# disable_zero_weight_rewards 是实用工具：自动禁用无效奖励项，优化训练计算效率；
+# 设计逻辑：通过 “静态声明 + 动态补全” 的方式，既保证配置的可读性 / 复用性，又适配大规模并行仿真的工程需求。
 
 @configclass
 class AmpEnvCfg(AnimationEnvCfg):

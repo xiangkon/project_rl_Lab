@@ -39,6 +39,7 @@ python scripts/rsl_rl/train_amp.py --task=Atom01-AMP --headless
 
 python scripts/rsl_rl/play_amp.py --task=Atom01-AMP-Play
 ```
+ 
 
 ## 3. 运动可视化
 ### 3.1. 基于 TWIST 进行可视化

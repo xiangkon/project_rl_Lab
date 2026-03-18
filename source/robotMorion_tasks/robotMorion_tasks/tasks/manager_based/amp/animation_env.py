@@ -40,6 +40,16 @@ from isaaclab.managers import ActionManager, ObservationManager, RecorderManager
 from robotMorion_tasks.tasks.manager_based.amp.managers import MotionDataManager, AnimationManager
 from .animation_env_cfg import AnimationEnvCfg
 
+
+# AnimationEnv 是 AMP 运动模仿任务的核心环境类，在基类 ManagerBasedRLEnv 基础上扩展了 MotionDataManager/AnimationManager，实现参考动画的加载、更新和重置；
+# 重写的 step 方法是核心：
+
+#     保留基类的物理步进、奖励计算、环境重置等通用逻辑；
+#     新增 animation_manager.update() 保证参考动画序列实时更新；
+
+# 重写的 _reset_idx 方法为重置环境重新采样参考动画，保证样本多样性；
+# 核心设计：通过降采样物理步进平衡精度与效率，通过动画管理器衔接 AMP 算法的判别器，实现运动模仿的核心逻辑。
+
 class AnimationEnv(ManagerBasedRLEnv):
     
     cfg: AnimationEnvCfg
